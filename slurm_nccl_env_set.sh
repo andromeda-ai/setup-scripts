@@ -37,6 +37,75 @@ verbose_echo() {
     fi
 }
 
+# Function to check and install iproute2 if not installed
+check_and_install_iproute2() {
+    verbose_echo "Checking for iproute2..."
+    
+    # Check if ip command exists (part of iproute2)
+    if command -v ip &> /dev/null; then
+        verbose_echo "iproute2 is already installed (ip command found)"
+        return 0
+    fi
+    
+    verbose_echo "iproute2 not found, attempting to install..."
+    
+    # Detect package manager and install iproute2
+    if command -v apt-get &> /dev/null; then
+        verbose_echo "Detected apt package manager (Debian/Ubuntu)"
+        if sudo apt-get update -qq && sudo apt-get install -y -qq iproute2; then
+            verbose_echo "Successfully installed iproute2"
+            return 0
+        else
+            echo "ERROR: Failed to install iproute2" >&2
+            return 1
+        fi
+    elif command -v yum &> /dev/null; then
+        verbose_echo "Detected yum package manager (RHEL/CentOS)"
+        if sudo yum install -y -q iproute; then
+            verbose_echo "Successfully installed iproute2"
+            return 0
+        else
+            echo "ERROR: Failed to install iproute2" >&2
+            return 1
+        fi
+    elif command -v dnf &> /dev/null; then
+        verbose_echo "Detected dnf package manager (Fedora/RHEL 8+)"
+        if sudo dnf install -y -q iproute; then
+            verbose_echo "Successfully installed iproute2"
+            return 0
+        else
+            echo "ERROR: Failed to install iproute2" >&2
+            return 1
+        fi
+    elif command -v pacman &> /dev/null; then
+        verbose_echo "Detected pacman package manager (Arch Linux)"
+        if sudo pacman -S --noconfirm --quiet iproute2; then
+            verbose_echo "Successfully installed iproute2"
+            return 0
+        else
+            echo "ERROR: Failed to install iproute2" >&2
+            return 1
+        fi
+    elif command -v zypper &> /dev/null; then
+        verbose_echo "Detected zypper package manager (openSUSE)"
+        if sudo zypper install -y -q iproute2; then
+            verbose_echo "Successfully installed iproute2"
+            return 0
+        else
+            echo "ERROR: Failed to install iproute2" >&2
+            return 1
+        fi
+    else
+        echo "ERROR: Could not detect package manager. Please install iproute2 manually." >&2
+        echo "  On Debian/Ubuntu: sudo apt-get install iproute2" >&2
+        echo "  On RHEL/CentOS: sudo yum install iproute" >&2
+        echo "  On Fedora: sudo dnf install iproute" >&2
+        echo "  On Arch: sudo pacman -S iproute2" >&2
+        echo "  On openSUSE: sudo zypper install iproute2" >&2
+        return 1
+    fi
+}
+
 # Function to append environment variables to file (without export commands)
 append_env_variables() {
     local output_file="$1"
@@ -322,6 +391,12 @@ main() {
         echo "===================================="
         echo "This script properly filters for actual InfiniBand adapters"
         echo ""
+    fi
+    
+    # Check and install iproute2 if not installed
+    if ! check_and_install_iproute2; then
+        echo "ERROR: iproute2 is required but could not be installed. Exiting." >&2
+        exit 1
     fi
     
     detect_ib_devices
