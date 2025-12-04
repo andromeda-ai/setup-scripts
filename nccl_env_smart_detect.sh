@@ -120,7 +120,7 @@ detect_devices() {
     log "IB devices: ${ib_devices[*]:-none} (max: ${max_ib_speed}G)"
     log "RoCE devices: ${roce_devices[*]:-none} (max: ${max_roce_speed}G)"
 
-    local exclude_devices=()
+    local use_devices=()
     local use_roce=false
 
     if [[ ${#roce_devices[@]} -gt 0 && ${#ib_devices[@]} -gt 0 ]]; then
@@ -129,17 +129,36 @@ detect_devices() {
 
         if [[ "$max_roce_speed" -gt "$max_ib_speed" ]]; then
             log "RoCE faster than IB (${max_roce_speed}G > ${max_ib_speed}G)"
-            log "Excluding IB devices (likely NVSwitch internal)"
-            exclude_devices=("${ib_devices[@]}")
+            log "Using only fastest RoCE devices (${max_roce_speed}G)"
+            for i in "${!roce_devices[@]}"; do
+                if [[ "${roce_speeds[$i]}" -eq "$max_roce_speed" ]]; then
+                    use_devices+=("${roce_devices[$i]}")
+                fi
+            done
             use_roce=true
         else
             log "IB faster or equal to RoCE (${max_ib_speed}G >= ${max_roce_speed}G)"
-            log "Using IB devices for inter-node"
+            log "Using only fastest IB devices (${max_ib_speed}G)"
+            for i in "${!ib_devices[@]}"; do
+                if [[ "${ib_speeds[$i]}" -eq "$max_ib_speed" ]]; then
+                    use_devices+=("${ib_devices[$i]}")
+                fi
+            done
         fi
     elif [[ ${#ib_devices[@]} -gt 0 ]]; then
-        log "IB-only environment"
+        log "IB-only environment, using fastest (${max_ib_speed}G)"
+        for i in "${!ib_devices[@]}"; do
+            if [[ "${ib_speeds[$i]}" -eq "$max_ib_speed" ]]; then
+                use_devices+=("${ib_devices[$i]}")
+            fi
+        done
     elif [[ ${#roce_devices[@]} -gt 0 ]]; then
-        log "RoCE-only environment"
+        log "RoCE-only environment, using fastest (${max_roce_speed}G)"
+        for i in "${!roce_devices[@]}"; do
+            if [[ "${roce_speeds[$i]}" -eq "$max_roce_speed" ]]; then
+                use_devices+=("${roce_devices[$i]}")
+            fi
+        done
         use_roce=true
     else
         warn "No active RDMA devices found"
@@ -149,15 +168,12 @@ detect_devices() {
 
     log ""
     log "=== Generated Configuration ==="
+    log "Using devices: ${use_devices[*]}"
 
-    if [[ ${#exclude_devices[@]} -gt 0 ]]; then
-        local exclude_str=$(IFS=,; echo "${exclude_devices[*]}")
-        echo "NCCL_IB_HCA=^${exclude_str}"
-        log "NCCL_IB_HCA=^${exclude_str} (excluding these devices)"
-    elif [[ ${#ib_devices[@]} -gt 0 && "$use_roce" != "true" ]]; then
-        local ib_str=$(IFS=,; echo "${ib_devices[*]}")
-        echo "NCCL_IB_HCA=${ib_str}"
-        log "NCCL_IB_HCA=${ib_str}"
+    if [[ ${#use_devices[@]} -gt 0 ]]; then
+        local use_str=$(IFS=,; echo "${use_devices[*]}")
+        echo "NCCL_IB_HCA=${use_str}"
+        log "NCCL_IB_HCA=${use_str}"
     fi
 
     echo "NCCL_IB_DISABLE=0"
